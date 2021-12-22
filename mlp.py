@@ -256,19 +256,15 @@ def process_output(output_dict, sep_head_tensor, slice_size, net) :
     new_out = output_dict.copy()
     sep_head_tensor = pad(torch.squeeze(sep_head_tensor), (0,0,5,5,5,5), "constant", 0)
     temp_boxes = new_out['box3d_lidar'].clone()
-    temp_boxes[:,0] = temp_boxes[:,0] * (468 / (2 * 74.88)) + 234
-    temp_boxes[:,1] = temp_boxes[:,1] * (468 / (2 * 74.88)) + 234
-    temp_boxes = torch.round(temp_boxes[:,:2]).to(dtype=torch.int32)
-    slices_list = []
-    for new_xy in temp_boxes : 
-        sep_head_slice = sep_head_tensor[new_xy[1] + 5 - slice_size : new_xy[1] + 5 + slice_size, new_xy[0] + 5 - slice_size : new_xy[0] + 5 + slice_size, :]
-        slices_list.append(sep_head_slice)
+    temp_boxes = torch.round(temp_boxes[:,:2] * (468 / (2 * 74.88)) + 234).to(dtype=torch.int32)
+    temp_boxes = temp_boxes.detach().tolist()
+    slices_list = [sep_head_tensor[temp_boxes[i][1] + 5 - slice_size : temp_boxes[i][1] + 5 + slice_size, temp_boxes[i][0] + 5 - slice_size : temp_boxes[i][0] + 5 + slice_size, :] for i in range(len(temp_boxes))]
     data = torch.stack(slices_list).reshape((len(temp_boxes), 36*3))
     
     output = net(data)
     _, pred = torch.max(output, 1)
     
-    filtered_boxes = [idx for idx, element in enumerate(pred) if element != 1 and element != 3]
+    filtered_boxes = np.argwhere(np.array(pred.cpu().detach()) % 2 == 0).tolist()
     new_out['label_preds'] = output_dict['label_preds'][filtered_boxes]
     new_out['scores'] = output_dict['scores'][filtered_boxes]
     new_out['box3d_lidar'] = output_dict['box3d_lidar'][filtered_boxes]
